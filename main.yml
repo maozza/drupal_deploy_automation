@@ -1,0 +1,77 @@
+---
+- hosts: "{{hosts}}"
+  serial: 1
+  tasks:
+    - include_vars: vars.yml
+
+    - name: verify os
+      command: "exit 1"
+      when: ansible_distribution_major_version != "7" or ansible_distribution != "CentOS"
+
+    - selinux:
+        state: disabled
+
+    - name: install repos
+      yum:
+        name: "{{ item }}"
+      with_items:
+       - "http://rpms.famillecollet.com/enterprise/remi-release-7.rpm"
+       - "epel-release"
+
+    - ini_file:
+        dest: /etc/yum.repos.d/remi.repo
+        section: remi-php56
+        option: enabled
+        value: 1
+
+    - ini_file:
+        dest: /etc/yum.repos.d/remi.repo
+        section: remi
+        option: enabled
+        value: 1
+
+    - name: install packages
+      yum:
+        name: "{{ item }}"
+      with_items: "{{ packages }}"
+
+    - name: create directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: 0755
+      with_items:
+        - "{{ docroot }}"
+        - "/etc/nginx/ssl"
+
+    - name: get source code
+      git:
+        repo: "{{ git_repo }}"
+        dest: "{{ docroot }}"
+
+    - file:
+        path: "{{ docroot }}/sites/default"
+        state: directory
+        mode: 0755
+
+    - file:
+        path: "{{ docroot }}/sites/default/files"
+        state: directory
+        mode: 0755
+        owner: nginx
+        group: nginx
+
+    - name: copy files
+      template:
+         src: "{{ item.src }}"
+         dest: "{{ item.dest }}"
+      with_items: "{{ template_files }}"
+
+    - name: start all
+      service:
+        name: "{{ item }}"
+        state: started
+        enabled: yes
+      with_items:
+        - nginx
+        - php-fpm
